@@ -92,16 +92,25 @@ or monthly reset. Nothing gets billed unless you add a payment method and move t
 You'll do these once; the code side (wrangler config, migrations) will already be in the repo.
 
 1. **Create a Cloudflare account** at dash.cloudflare.com (free plan, no card needed).
-2. **Create the D1 database**: *Storage & Databases → D1 → Create* → name `shotlog`. Copy its **Database ID**
-   (it goes into `wrangler.jsonc`; I'll make that commit).
+2. **Create the D1 database**: *Storage & Databases → D1 → Create* → name it exactly `shotlog`.
+   `wrangler.jsonc` refers to it by name, so there's no ID to copy. (If you skip this step, the first deploy
+   should create it for you — Wrangler's "automatic provisioning".)
 3. **Create the R2 bucket**: *R2 → Create bucket* → `shotlog-photos` (keep it private). R2 may ask you to
    accept its terms first.
 4. **Create the Worker from GitHub**: *Workers & Pages → Create → Import a repository* → pick `shotlog`.
    Build settings: build command `npm run build`, deploy command
    `npx wrangler d1 migrations apply shotlog --remote && npx wrangler deploy`.
+   The migrations step creates the tables and imports your seven coffees on the first run, and does nothing
+   on later runs unless there's a new migration.
 5. **Turn on Access for the workers.dev URL**: in the Worker's *Settings → Domains & Routes*, enable Cloudflare
-   Access on `workers.dev` (and on preview URLs). Allow only your email address. Copy the **Audience (AUD) tag** and
-   your **team domain** into the Worker variables `ACCESS_AUD` / `ACCESS_TEAM_DOMAIN`.
+   Access on `workers.dev` (and on preview URLs). Allow only your email address. Note the **Audience (AUD) tag**
+   and your **team domain** (`<team>.cloudflareaccess.com`).
+   Then on GitHub, edit `wrangler.jsonc` (pencil icon) and paste them into `ACCESS_AUD` and `ACCESS_TEAM_DOMAIN`
+   under `vars`, and commit. They aren't secrets. The push redeploys automatically.
+   Until this is done the app loads, but every API call answers "Cloudflare Access is not configured". That's
+   deliberate: the Worker refuses to run unprotected.
+   (Don't set these two in the dashboard instead: each deploy resets variables to what's in `wrangler.jsonc`.
+   Secrets, like the API key below, are not affected.)
 6. **(M4) Add the Claude API key**: *Worker → Settings → Variables and Secrets → Add → Secret* →
    `ANTHROPIC_API_KEY`. See §6 for creating a capped key first.
 7. **Open it on the iPhone**: visit the workers.dev URL, sign in with the email code, then
@@ -116,7 +125,9 @@ Optional, from a computer: `npx wrangler login` lets you run the same steps from
 
 ```
 npm install
-npm run dev        # wrangler dev: runs the Worker locally with a local D1 and a local R2 (no account needed)
+cp .dev.vars.example .dev.vars   # local-only settings (AUTH_DISABLED=true); never committed
+npm run preview    # build the app, apply migrations to a local D1, serve everything on http://localhost:8787
+npm run dev        # same, with hot reload for the web app on http://localhost:5173
 npm test           # engine + API tests, running inside Cloudflare's local runtime
 ```
 
