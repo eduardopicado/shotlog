@@ -11,7 +11,8 @@ export interface ParsedShotText {
   time_s?: number;
   temperature_c?: number;
   preinfusion_s?: number;
-  grinder_setting?: string;
+  grind_setting?: number;
+  grind_inner?: number;
   taste_tags: TasteTag[];
 }
 
@@ -38,14 +39,16 @@ export function parseShotText(input: string): ParsedShotText {
   const text = input.toLowerCase().replace(/→|->/g, ' to ');
   const out: ParsedShotText = { taste_tags: [] };
 
-  const dose = text.match(new RegExp(`${NUM}\\s*g?\\s*(in|dose)\\b`)) ?? text.match(new RegExp(`dose\\s*:?\\s*${NUM}`));
-  if (dose) out.dose_g = num(dose[1]);
-  const yld = text.match(new RegExp(`${NUM}\\s*g?\\s*(out|yield)\\b`)) ?? text.match(new RegExp(`yield\\s*:?\\s*${NUM}`));
-  if (yld) out.yield_g = num(yld[1]);
-  // "20g to 40g" / "20 g → 40 g"
-  if (out.dose_g == null && out.yield_g == null) {
-    const pair = text.match(new RegExp(`${NUM}\\s*g?\\s*(?:to|:)\\s*${NUM}\\s*g`));
-    if (pair) { out.dose_g = num(pair[1]); out.yield_g = num(pair[2]); }
+  // "20g to 40g" / "20 g → 40 g" wins over "in"/"out" words ("40g in 31 sec" means time, not dose).
+  const pair = text.match(new RegExp(`${NUM}\\s*g?\\s*(?:to|:)\\s*${NUM}\\s*g`));
+  if (pair) {
+    out.dose_g = num(pair[1]);
+    out.yield_g = num(pair[2]);
+  } else {
+    const dose = text.match(new RegExp(`${NUM}\\s*g?\\s*(?:in|dose)\\b`)) ?? text.match(new RegExp(`dose\\s*:?\\s*${NUM}`));
+    if (dose) out.dose_g = num(dose[1]);
+    const yld = text.match(new RegExp(`${NUM}\\s*g?\\s*(?:out|yield)\\b`)) ?? text.match(new RegExp(`yield\\s*:?\\s*${NUM}`));
+    if (yld) out.yield_g = num(yld[1]);
   }
 
   const pi = text.match(new RegExp(`(?:pre-?infusion|pi)\\s*:?\\s*${NUM}\\s*(?:s|sec|seconds?)?`));
@@ -59,8 +62,12 @@ export function parseShotText(input: string): ParsedShotText {
   const temp = text.match(new RegExp(`${NUM}\\s*(?:°\\s*c?|º\\s*c?|degrees?|c\\b)`));
   if (temp) out.temperature_c = num(temp[1]);
 
-  const grind = text.match(/(?:grind|grinder|setting)\s*(?:setting|at|on)?\s*:?\s*([0-9]+(?:[.,][0-9]+)?(?:\s*\/\s*[a-z]*\s*[0-9]+)?)/);
-  if (grind) out.grinder_setting = grind[1].trim();
+  // "grind 12", "grind 12 inner 5", "grind 12/5", "setting: 14"
+  const grind = text.match(/(?:grind|grinder|setting)\s*(?:setting|at|on)?\s*:?\s*(\d+(?:[.,]\d+)?)(?:\s*(?:\/|inner|burr)\s*(?:burr\s*)?(\d+))?/);
+  if (grind) {
+    out.grind_setting = num(grind[1]);
+    if (grind[2]) out.grind_inner = num(grind[2]);
+  }
 
   // Taste words. "not sour" / "no bitterness" are negated.
   for (const [tag, re] of TAG_PATTERNS) {

@@ -1,0 +1,3 @@
+# Copy to .dev.vars for local development (git-ignored). Never commit real keys.
+AUTH_DISABLED=true
+# ANTHROPIC_API_KEY=sk-ant-...

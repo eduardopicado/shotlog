@@ -1,25 +1,15 @@
-// Domain types shared by the server and the web client.
+// Domain types shared by the Worker (API) and the web client. See docs/SPEC.md §5.
 
 export const ROAST_LEVELS = ['light', 'light-medium', 'medium', 'medium-dark', 'dark'] as const;
 export type RoastLevel = (typeof ROAST_LEVELS)[number];
 
 /**
- * Where a coffee fact came from. Kept per field so the UI can always show
- * whether something is confirmed or only estimated.
- *  - packaging:  printed on the bag / product information
- *  - visual:     estimated from a photo of the beans (never a confirmed fact)
- *  - user:       entered or confirmed by you
- *  - historical: imported from earlier notes, not re-verified
+ * Where a coffee fact came from (spec §6). Kept per field so the UI can always
+ * show whether something is confirmed or only estimated.
  */
 export const FIELD_SOURCES = ['packaging', 'visual', 'user', 'historical'] as const;
 export type FieldSource = (typeof FIELD_SOURCES)[number];
 
-/**
- * historical: imported record, NOT confirmed as in stock
- * active:     currently in use / in stock
- * finished:   bag is done, history kept
- * archived:   hidden from the dashboard, history kept
- */
 export const COFFEE_STATUSES = ['active', 'historical', 'finished', 'archived'] as const;
 export type CoffeeStatus = (typeof COFFEE_STATUSES)[number];
 
@@ -28,6 +18,7 @@ export const SOURCED_FIELDS = [
   'roast_level', 'roast_date', 'tasting_notes', 'cupping_score', 'intensity', 'altitude',
 ] as const;
 export type SourcedField = (typeof SOURCED_FIELDS)[number];
+export type FieldSources = Partial<Record<SourcedField, FieldSource>>;
 
 export interface Coffee {
   id: number;
@@ -40,13 +31,13 @@ export interface Coffee {
   variety: string | null;
   processing: string | null;
   roast_level: RoastLevel | null;
-  roast_date: string | null; // YYYY-MM-DD
+  roast_date: string | null; // YYYY-MM-DD, exact dates only
   purchase_date: string | null;
   tasting_notes: string[];
   cupping_score: number | null;
   intensity: string | null;
   altitude: string | null;
-  field_sources: Partial<Record<SourcedField, FieldSource>>;
+  field_sources: FieldSources;
   status: CoffeeStatus;
   remaining_g: number | null;
   notes: string | null;
@@ -54,17 +45,17 @@ export interface Coffee {
   updated_at: string;
 }
 
-export type CoffeeInput = Omit<Coffee, 'id' | 'created_at' | 'updated_at'>;
-
 export const IMAGE_TYPES = ['packaging', 'beans', 'shot', 'other'] as const;
 export type ImageType = (typeof IMAGE_TYPES)[number];
+
+export const OILINESS = ['dry', 'slight sheen', 'some oil', 'oily'] as const;
 
 export interface BeanObservation {
   roast_estimate: RoastLevel | null;
   roast_estimate_note: string;
   colour_consistency: string;
   surface: string;
-  oiliness: 'dry' | 'slight sheen' | 'some oil' | 'oily' | null;
+  oiliness: (typeof OILINESS)[number] | null;
   defects: string[];
   general: string;
   confidence: 'low' | 'medium' | 'high';
@@ -73,10 +64,9 @@ export interface BeanObservation {
 export interface CoffeeImage {
   id: number;
   coffee_id: number | null;
-  file_name: string;
-  url: string;
   image_type: ImageType;
-  ai_observations: BeanObservation | Record<string, unknown> | null;
+  url: string; // /api/images/:id/file
+  ai_observations: unknown | null;
   created_at: string;
 }
 
@@ -86,40 +76,43 @@ export type RecipeStatus = (typeof RECIPE_STATUSES)[number];
 export const RECIPE_SOURCES = ['engine', 'ai', 'packaging', 'historical', 'user', 'dial-in'] as const;
 export type RecipeSource = (typeof RECIPE_SOURCES)[number];
 
-/** A recipe is a recommendation/configuration. It is never an actual extraction. */
-export interface Recipe {
-  id: number;
-  coffee_id: number;
-  version: number;
+/** The parameters that define how to pull a shot. */
+export interface RecipeParams {
   dose_g: number;
   yield_g: number;
-  ratio: number; // always yield_g / dose_g, computed by the database
-  temperature_c: number;
+  temperature_c: number | null; // null only for printed recipes that gave no temperature
   time_min_s: number;
   time_max_s: number;
   preinfusion_min_s: number | null;
   preinfusion_max_s: number | null;
-  grinder_setting: string | null;
+  grind_setting: number | null; // Smart Grinder Pro dial, lower = finer
+  grind_inner: number | null;   // inner burr, optional
+}
+
+/** A recipe is a plan/recommendation. It is never an actual extraction (rule R3). */
+export interface Recipe extends RecipeParams {
+  id: number;
+  coffee_id: number;
+  version: number;
+  ratio: number; // yield_g / dose_g, computed by the database
   rationale: string | null;
   source: RecipeSource;
   status: RecipeStatus;
   promising: boolean;
-  based_on_shot_id: number | null;
-  /** For packaging recipes: the ratio printed on the bag, kept to flag inconsistencies. */
   stated_ratio: number | null;
+  based_on_shot_id: number | null;
   created_at: string;
 }
 
-export type RecipeParams = Pick<
-  Recipe,
-  'dose_g' | 'yield_g' | 'temperature_c' | 'time_min_s' | 'time_max_s' | 'preinfusion_min_s' | 'preinfusion_max_s' | 'grinder_setting'
->;
-
 export const TASTE_TAGS = [
-  'sour', 'bitter', 'sweet', 'astringent', 'thin', 'heavy', 'balanced',
-  'chocolate', 'fruity', 'nutty', 'caramel', 'too acidic', 'channeling',
+  'sour', 'bitter', 'sweet', 'astringent', 'thin', 'heavy', 'balanced', 'too acidic', 'channeling',
+  'chocolate', 'fruity', 'nutty', 'caramel',
 ] as const;
 export type TasteTag = (typeof TASTE_TAGS)[number];
+
+/** Tags that describe extraction/balance (drive adjustments) vs flavour notes (recorded only). */
+export const BALANCE_TAGS: TasteTag[] = ['sour', 'bitter', 'sweet', 'astringent', 'thin', 'heavy', 'balanced', 'too acidic', 'channeling'];
+export const FLAVOUR_TAGS: TasteTag[] = ['chocolate', 'fruity', 'nutty', 'caramel'];
 
 export const TASTE_TAG_LABELS: Record<TasteTag, string> = {
   sour: 'Sour',
@@ -129,39 +122,41 @@ export const TASTE_TAG_LABELS: Record<TasteTag, string> = {
   thin: 'Thin / watery',
   heavy: 'Heavy / intense',
   balanced: 'Balanced',
+  'too acidic': 'Too acidic (but good)',
+  channeling: 'Spurting / channeling',
   chocolate: 'Chocolate',
   fruity: 'Fruity',
   nutty: 'Nutty',
   caramel: 'Caramel / toffee',
-  'too acidic': 'Too acidic (but good)',
-  channeling: 'Spurting / channeling',
 };
 
-/** An actual extraction. Never overwritten when a recipe changes. */
-export interface Shot {
-  id: number;
-  coffee_id: number | null; // null = historical shot not attributed to a known coffee
-  recipe_id: number | null;
-  pulled_at: string;
+export interface ShotFields {
   dose_g: number;
   yield_g: number;
-  ratio: number;
-  time_s: number;
+  time_s: number; // total time including pre-infusion
   temperature_c: number | null;
   preinfusion_s: number | null;
-  grinder_model: string | null;
-  grinder_setting: string | null;
-  basket: string | null;
+  grind_setting: number | null;
+  grind_inner: number | null;
   taste_tags: TasteTag[];
   score: number | null; // 1-5
+}
+
+/** An actual extraction (rule R3). */
+export interface Shot extends ShotFields {
+  id: number;
+  coffee_id: number | null; // null = historical shot, coffee unknown
+  recipe_id: number | null;
+  pulled_at: string;
+  ratio: number;
+  grinder_model: string | null;
+  basket: string | null;
   feedback: string | null;
   notes: string | null;
-  photo_url: string | null;
+  photo_image_id: number | null;
   advice: Advice | null;
   created_at: string;
 }
-
-export type ShotInput = Omit<Shot, 'id' | 'ratio' | 'created_at' | 'advice' | 'photo_url'> & { photo_url?: string | null };
 
 export const ADJUSTMENTS = [
   'grind_finer', 'grind_coarser', 'increase_temp', 'decrease_temp',
@@ -169,16 +164,21 @@ export const ADJUSTMENTS = [
 ] as const;
 export type Adjustment = (typeof ADJUSTMENTS)[number];
 
+export const DIAGNOSES = ['under', 'over', 'uneven', 'strength', 'balance', 'on-target', 'time-only'] as const;
+export type Diagnosis = (typeof DIAGNOSES)[number];
+
 export interface Advice {
   adjustment: Adjustment;
+  diagnosis: Diagnosis;
+  /** Which rule of the decision table (spec §8.3) produced this, for traceability. */
+  rule: number | null;
   headline: string;
   explanation: string;
   checks: string[];
   next: RecipeParams;
-  diagnosis: 'under' | 'over' | 'uneven' | 'strength' | 'balance' | 'on-target' | 'time-only';
   promising: boolean;
   source: 'engine' | 'ai';
-  engine_adjustment?: Adjustment; // when AI overrides the engine, keep the engine's call for traceability
+  engine_adjustment?: Adjustment; // when AI differs from the engine, the engine's original call
 }
 
 export interface Equipment {
@@ -197,8 +197,6 @@ export interface BrewPreferences {
   time_max_s: number;
   preinfusion_min_s: number;
   preinfusion_max_s: number;
-  /** On the Smart Grinder Pro a LOWER number is finer. */
-  grinder_lower_is_finer: boolean;
 }
 
 export const DEFAULT_PREFERENCES: BrewPreferences = {
@@ -208,7 +206,23 @@ export const DEFAULT_PREFERENCES: BrewPreferences = {
   time_max_s: 32,
   preinfusion_min_s: 5,
   preinfusion_max_s: 8,
-  grinder_lower_is_finer: true,
+};
+
+/** Machine and grinder limits used by the engine (Breville Dual Boiler + Smart Grinder Pro). */
+export interface EquipmentLimits {
+  temp_min: number;
+  temp_max: number;
+  grind_min: number;
+  grind_max: number;
+  lower_is_finer: boolean;
+}
+
+export const DEFAULT_LIMITS: EquipmentLimits = {
+  temp_min: 86,
+  temp_max: 96,
+  grind_min: 1,
+  grind_max: 60,
+  lower_is_finer: true,
 };
 
 export interface CoffeeSummary {
@@ -219,4 +233,27 @@ export interface CoffeeSummary {
   shot_count: number;
   avg_score: number | null;
   roast_age_days: number | null;
+}
+
+export interface CoffeeDetail extends CoffeeSummary {
+  images: CoffeeImage[];
+  recipes: Recipe[];
+  shots: Shot[];
+}
+
+export interface Dashboard {
+  active: CoffeeSummary[];
+  recent: CoffeeSummary[];
+  last_shot: (Shot & { coffee_name: string | null }) | null;
+  historical_count: number;
+  unassigned_shot_count: number;
+}
+
+export interface AppStatus {
+  version: string;
+  ai_configured: boolean;
+  ai_calls_today: number;
+  ai_daily_limit: number;
+  ai_cost_month_usd: number;
+  ai_calls_month: number;
 }
