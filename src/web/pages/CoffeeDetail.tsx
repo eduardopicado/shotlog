@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
-import { ErrorBox, Loading, Page, RecipeCard, ShotRow, SourceBadge, useLoad } from '../components';
+import { AiNote, BeanObservationPanel, ErrorBox, isBeanObservation, Loading, Page, RecipeCard, ShotRow, SourceBadge, useLoad } from '../components';
 import { dateShort, formatGrind, formatRatio, g, roastAge, ROAST_LABELS, STATUS_LABELS, temp, trimNumber } from '../format';
 import { changedVariables } from '../../shared/engine';
 import type { CoffeeDetail, CoffeeStatus, ImageType, Recipe, SourcedField } from '../../shared/types';
@@ -38,7 +38,11 @@ function whatChanged(prev: Recipe | undefined, r: Recipe): string {
 export function CoffeeDetailPage() {
   const id = Number(useParams().id);
   const { data, error, loading, reload } = useLoad(() => api.coffee(id), [id]);
+  const status = useLoad(() => api.status());
+  const aiOn = Boolean(status.data?.ai_configured);
   const [busy, setBusy] = useState(false);
+  const [aiBusy, setAiBusy] = useState<string | null>(null);
+  const [aiNote, setAiNote] = useState<string | null>(null);
   const [actionError, setActionError] = useState<unknown>(null);
 
   const act = async (fn: () => Promise<unknown>) => {
@@ -46,7 +50,18 @@ export function CoffeeDetailPage() {
     setActionError(null);
     try { await fn(); await reload(); } catch (e) { setActionError(e); } finally { setBusy(false); }
   };
-  const setStatus = (status: CoffeeStatus) => act(() => api.updateCoffee(id, { status }));
+  const setStatus = (st: CoffeeStatus) => act(() => api.updateCoffee(id, { status: st }));
+  const askBarista = async () => {
+    setAiBusy('The barista is looking at this coffee…');
+    setAiNote(null);
+    await act(async () => { const r = await api.suggestRecipe(id, true); setAiNote(r.ai_note ?? null); });
+    setAiBusy(null);
+  };
+  const describe = async (imageId: number) => {
+    setAiBusy('Looking at the beans…');
+    await act(() => api.describeBeans(imageId));
+    setAiBusy(null);
+  };
   const upload = (type: ImageType) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     e.target.value = '';
@@ -72,6 +87,8 @@ export function CoffeeDetailPage() {
         {c.status !== 'active' ? <button className="btn" disabled={busy} onClick={() => setStatus('active')}>Mark as in use</button> : null}
       </div>
       <ErrorBox error={actionError} />
+      {aiBusy ? <p className="thinking">{aiBusy} (10–30 seconds)</p> : null}
+      <AiNote note={aiNote} />
 
       {recipe ? (
         <RecipeCard recipe={recipe}>
@@ -79,6 +96,7 @@ export function CoffeeDetailPage() {
             ? <button className="btn primary" disabled={busy} onClick={() => act(() => api.activateRecipe(recipe.id))}>Use this recipe</button> : null}
           <button className="btn" disabled={busy} onClick={() => act(() => api.suggestRecipe(id))}>Suggest new</button>
           <Link className="btn" to={`/coffees/${id}/recipe?from=${recipe.id}`}>Adjust</Link>
+          {aiOn ? <button className="btn" disabled={busy} onClick={askBarista}>✨ Ask the barista</button> : null}
         </RecipeCard>
       ) : (
         <section className="card">
@@ -122,10 +140,15 @@ export function CoffeeDetailPage() {
               <figure key={img.id}>
                 <a href={img.url} target="_blank" rel="noreferrer"><img src={img.url} alt={`${img.image_type} photo`} loading="lazy" /></a>
                 <figcaption>{img.image_type}</figcaption>
+                {aiOn && img.image_type === 'beans' && !isBeanObservation(img.ai_observations)
+                  ? <button className="btn small" disabled={busy} onClick={() => describe(img.id)}>✨ Describe</button> : null}
               </figure>
             ))}
           </div>
         ) : <p className="muted small">No photos yet.</p>}
+        {data.images.filter((img) => isBeanObservation(img.ai_observations)).map((img) => (
+          <BeanObservationPanel key={img.id} obs={img.ai_observations as never} />
+        ))}
         <div className="row">
           <label className="btn">＋ Bag photo<input type="file" accept="image/*" capture="environment" hidden onChange={upload('packaging')} /></label>
           <label className="btn">＋ Beans photo<input type="file" accept="image/*" capture="environment" hidden onChange={upload('beans')} /></label>

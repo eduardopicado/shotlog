@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, type CoffeeInput } from '../api';
-import { ErrorBox, Loading, Page, SourceBadge, useLoad } from '../components';
+import { AiNote, BeanObservationPanel, ErrorBox, Loading, Page, SourceBadge, useLoad } from '../components';
 import { ROAST_LABELS, STATUS_LABELS } from '../format';
 import { resizeImage } from '../image';
-import { COFFEE_STATUSES, ROAST_LEVELS, type Coffee, type CoffeeImage, type FieldSources, type SourcedField } from '../../shared/types';
+import { COFFEE_STATUSES, ROAST_LEVELS, type BeanObservation, type Coffee, type CoffeeImage, type FieldSources, type PackagingDraft, type SourcedField } from '../../shared/types';
+import { formatRatio } from '../format';
 
 type Form = {
   name: string; brand: string; product: string; origin_country: string; region: string; farm: string; variety: string;
@@ -51,6 +52,10 @@ export function CoffeeFormPage() {
   const [photos, setPhotos] = useState<CoffeeImage[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  const [draft, setDraft] = useState<PackagingDraft | null>(null);
+  const [beans, setBeans] = useState<BeanObservation | null>(null);
+  const [aiBusy, setAiBusy] = useState<string | null>(null);
+  const aiOn = Boolean(status.data?.ai_configured);
 
   useEffect(() => {
     const c = existing.data?.coffee;
@@ -77,6 +82,60 @@ export function CoffeeFormPage() {
     } catch (err) { setError(err); } finally { setBusy(false); }
   };
 
+  /** AI reads the bag; every value lands in the form for you to check, labelled "Packaging". */
+  const readBag = async () => {
+    const ids = photos.filter((p) => p.image_type === 'packaging').map((p) => p.id);
+    setAiBusy('Reading the bag…');
+    setError(null);
+    try {
+      const d = await api.readBag(ids);
+      setDraft(d);
+      const f = d.fields;
+      setForm((cur) => ({
+        ...cur,
+        ...Object.fromEntries(Object.entries(f).map(([k, v]) => [k, String(v)])),
+        ...(d.tasting_notes.length ? { tasting_notes: d.tasting_notes.join(', ') } : {}),
+      }));
+      setSources((cur) => {
+        const next = { ...cur };
+        for (const k of Object.keys(f)) next[k as SourcedField] = 'packaging';
+        if (d.tasting_notes.length) next.tasting_notes = 'packaging';
+        return next;
+      });
+    } catch (err) { setError(err); } finally { setAiBusy(null); }
+  };
+
+  const describeBeans = async () => {
+    const img = photos.find((p) => p.image_type === 'beans');
+    if (!img) return;
+    setAiBusy('Looking at the beans…');
+    setError(null);
+    try { setBeans((await api.describeBeans(img.id)).observation); } catch (err) { setError(err); } finally { setAiBusy(null); }
+  };
+
+  const useRoastEstimate = () => {
+    if (!beans?.roast_estimate) return;
+    setForm((f) => ({ ...f, roast_level: beans.roast_estimate! }));
+    setSources((s) => ({ ...s, roast_level: 'visual' }));
+  };
+
+  /** Keep the recipe printed on the bag as a reference version (rule R2 check included). */
+  const savePackagingRecipe = async (coffeeId: number) => {
+    const r = draft?.packaging_recipe;
+    if (!r || r.dose_g == null || r.yield_g == null) return;
+    const timeKnown = r.time_s != null;
+    await api.createRecipe(coffeeId, {
+      source: 'packaging',
+      stated_ratio: r.stated_ratio,
+      rationale: `As printed on the packaging.${timeKnown ? '' : ' No time printed; using your usual window.'}${r.temperature_c == null ? ' No temperature printed.' : ''}`,
+      params: {
+        dose_g: r.dose_g, yield_g: r.yield_g, temperature_c: r.temperature_c,
+        time_min_s: r.time_s ?? 28, time_max_s: r.time_s ?? 32,
+        preinfusion_min_s: null, preinfusion_max_s: null, grind_setting: null, grind_inner: null,
+      },
+    }).catch(() => null); // a reference only; never blocks saving the coffee
+  };
+
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
@@ -90,6 +149,7 @@ export function CoffeeFormPage() {
         nav(`/coffees/${editId}`);
       } else {
         const c = await api.createCoffee({ ...input, field_sources: sources, image_ids: photos.map((p) => p.id) });
+        await savePackagingRecipe(c.id);
         await api.suggestRecipe(c.id).catch(() => null); // starting recipe right away; the coffee page still works without it
         nav(`/coffees/${c.id}`);
       }
@@ -102,6 +162,7 @@ export function CoffeeFormPage() {
     <label className="field">
       <span>{label} <SourceBadge source={form[k].trim() ? sources[k] : undefined} /></span>
       <input value={form[k]} onChange={set(k)} placeholder="Unknown" {...props} />
+      {sources[k] === 'packaging' && draft?.evidence[k] ? <span className="evidence">Read on the bag: “{draft.evidence[k]}”</span> : null}
     </label>
   );
 
@@ -119,9 +180,46 @@ export function CoffeeFormPage() {
             {photos.length ? (
               <div className="photos">{photos.map((p) => <figure key={p.id}><img src={p.url} alt={p.image_type} /><figcaption>{p.image_type}</figcaption></figure>)}</div>
             ) : null}
-            {status.data && !status.data.ai_configured ? (
-              <p className="muted small">Reading the bag automatically arrives with the AI features. For now, fill in what the bag says below — leave anything not printed empty.</p>
+            {aiOn ? (
+              <div className="row">
+                <button type="button" className="btn primary" disabled={!!aiBusy || !photos.some((p) => p.image_type === 'packaging')} onClick={readBag}>✨ Read the bag</button>
+                <button type="button" className="btn" disabled={!!aiBusy || !photos.some((p) => p.image_type === 'beans')} onClick={describeBeans}>✨ Describe beans</button>
+              </div>
+            ) : status.data ? (
+              <p className="muted small">AI isn't connected, so fill in what the bag says below and leave anything not printed empty.</p>
             ) : null}
+            {aiBusy ? <p className="thinking">{aiBusy} (this can take 10–30 seconds)</p> : null}
+          </section>
+        ) : null}
+
+        {draft ? (
+          <section className="card ai-panel">
+            <h2>Read from the bag</h2>
+            <p className="muted small">
+              {Object.keys(draft.fields).length + (draft.tasting_notes.length ? 1 : 0)} fields filled in below and marked “Packaging”.
+              Anything not printed stays Unknown. Check them and correct anything that's wrong.
+            </p>
+            {draft.packaging_recipe ? (
+              <p className="small">
+                Printed recipe: {draft.packaging_recipe.dose_g ?? '?'} g → {draft.packaging_recipe.yield_g ?? '?'} g
+                {draft.packaging_recipe.dose_g && draft.packaging_recipe.yield_g ? ` (${formatRatio(draft.packaging_recipe.dose_g, draft.packaging_recipe.yield_g)})` : ''}
+                {draft.packaging_recipe.time_s ? `, ${draft.packaging_recipe.time_s} s` : ''}
+                {draft.packaging_recipe.temperature_c ? `, ${draft.packaging_recipe.temperature_c} °C` : ''}. It's saved as a reference recipe.
+              </p>
+            ) : null}
+            {draft.ratio_check && !draft.ratio_check.consistent ? <p className="warn">⚠ {draft.ratio_check.message}</p> : null}
+            {draft.uncertainties.length ? <><strong className="small">Unclear on the bag</strong><ul>{draft.uncertainties.map((u) => <li key={u}>{u}</li>)}</ul></> : null}
+            <details><summary className="small">All text read</summary><p className="raw-text">{draft.raw_text}</p></details>
+          </section>
+        ) : null}
+
+        {beans ? (
+          <section className="card">
+            <BeanObservationPanel obs={beans} />
+            {beans.roast_estimate && !form.roast_level ? (
+              <button type="button" className="btn" onClick={useRoastEstimate}>Use “{ROAST_LABELS[beans.roast_estimate]}” as estimated roast level</button>
+            ) : null}
+            <AiNote note={beans.roast_estimate && form.roast_level && sources.roast_level !== 'visual' ? 'Roast level is already set from the bag or by you, so the photo estimate is kept as an observation only.' : null} />
           </section>
         ) : null}
 

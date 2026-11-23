@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
-import { Chips, ErrorBox, Loading, Page, Stars, TagList, useLoad } from '../components';
+import { AiNote, Chips, ErrorBox, Loading, Page, Stars, TagList, useLoad } from '../components';
 import { dateTime, formatGrind, formatRatio, g, range, s, temp } from '../format';
 import { changedVariables } from '../../shared/engine';
 import { BALANCE_TAGS, FLAVOUR_TAGS, type Advice, type RecipeParams, type TasteTag } from '../../shared/types';
@@ -35,9 +35,32 @@ export function ShotPage() {
     const coffee = shot.coffee_id ? await api.coffee(shot.coffee_id) : null;
     return { shot, coffee };
   }, [id]);
+  const status = useLoad(() => api.status());
+  const aiOn = Boolean(status.data?.ai_configured);
   const [busy, setBusy] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const [aiNote, setAiNote] = useState<string | null>(null);
+  const autoReviewed = useRef(false);
   const [actionError, setActionError] = useState<unknown>(null);
   const [editing, setEditing] = useState(false);
+
+  const review = async () => {
+    setReviewing(true);
+    setActionError(null);
+    try {
+      const r = await api.advice(id, true);
+      setAiNote(r.ai_note ?? null);
+      await reload();
+    } catch (e) { setActionError(e); } finally { setReviewing(false); }
+  };
+
+  // When you described the shot in your own words, the barista reviews the advice automatically (spec §8.4).
+  useEffect(() => {
+    if (isNew && aiOn && data?.shot.feedback && data.shot.coffee_id && data.shot.advice?.source !== 'ai' && !autoReviewed.current) {
+      autoReviewed.current = true;
+      void review();
+    }
+  }, [isNew, aiOn, data]); // eslint-disable-line react-hooks/exhaustive-deps
   const [tags, setTags] = useState<TasteTag[]>([]);
   const [score, setScore] = useState<number | null>(null);
 
@@ -92,9 +115,12 @@ export function ShotPage() {
         {shot.notes ? <p className="notes">{shot.notes}</p> : null}
       </section>
 
+      {reviewing ? <p className="thinking">The barista is reviewing this shot… (10–20 seconds; the advice below is already usable)</p> : null}
+      <AiNote note={aiNote} />
       {advice ? (
         <section className={`card advice adv-${advice.adjustment}`}>
-          <span className="eyebrow">Next shot{advice.source === 'ai' ? ' · reviewed by AI' : ''}</span>
+          <span className="eyebrow">Next shot{advice.source === 'ai' ? ' · reviewed by the AI barista' : ''}</span>
+          {advice.source === 'ai' && advice.engine_adjustment ? <span className="muted small">The built-in rules suggested “{advice.engine_adjustment.replace('_', ' ')}”; the AI chose differently based on your description.</span> : null}
           <h2 className="advice-headline">{advice.headline}</h2>
           <p>{advice.explanation}</p>
           {advice.checks.length ? <ul className="checks">{advice.checks.map((c) => <li key={c}>{c}</li>)}</ul> : null}
@@ -106,6 +132,7 @@ export function ShotPage() {
               </button>
               {advice.adjustment !== 'keep' && advice.adjustment !== 'puck_prep'
                 ? <Link className="btn" to={back}>Keep current recipe</Link> : null}
+              {aiOn && advice.source !== 'ai' && !reviewing ? <button className="btn" onClick={review}>✨ Ask the barista</button> : null}
             </div>
           ) : <p className="muted small">Assign this shot to a coffee (Settings) to use its advice.</p>}
         </section>

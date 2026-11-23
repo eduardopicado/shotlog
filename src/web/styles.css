@@ -245,3 +245,14 @@ details.card > summary { cursor: pointer; font-weight: 600; }
 @media (min-width: 700px) {
   .grid2 { grid-template-columns: repeat(4, 1fr); }
 }
+
+/* AI results */
+.observation { background: var(--warn-soft); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.observation .facts > div { grid-template-columns: 7.5em 1fr; }
+.obs-head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; align-items: center; }
+.note { margin: 0; background: var(--info-soft); border-radius: 10px; padding: 8px 10px; }
+.evidence { font-size: 0.75rem; color: var(--muted); font-style: italic; }
+.ai-panel { border-color: var(--accent); }
+.ai-panel ul { margin: 0; padding-left: 18px; font-size: 0.9rem; }
+.raw-text { white-space: pre-wrap; font-size: 0.8rem; color: var(--muted); margin: 6px 0 0; }
+.thinking { color: var(--muted); font-style: italic; }

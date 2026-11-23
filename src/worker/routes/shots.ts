@@ -117,7 +117,8 @@ shots.post('/:id/advice', async (c) => {
     if (shot.coffee_id == null) throw new HTTPException(400, { message: 'Assign the shot to a coffee first.' });
     const coffee = (await getCoffee(db, shot.coffee_id))!;
     const history = (await listShots(db, coffee.id)).slice(0, 10);
-    const result = await reviewAdviceWithAi(c.env, { coffee, recipe, shot, history, engine: advice, limits: await getLimits(db) });
+    const [limits, prefs] = await Promise.all([getLimits(db), getPreferences(db)]);
+    const result = await reviewAdviceWithAi(c.env, { coffee, recipe, shot, history, engine: advice, limits, prefs });
     advice = result.advice;
     ai_note = result.note;
   }

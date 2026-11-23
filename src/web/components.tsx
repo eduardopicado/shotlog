@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import type { FieldSource, Recipe, Shot, TasteTag } from '../shared/types';
+import type { BeanObservation, FieldSource, Recipe, Shot, TasteTag } from '../shared/types';
 import { TASTE_TAG_LABELS } from '../shared/types';
 import { checkStatedRatio } from '../shared/ratio';
 import { ApiError } from './api';
@@ -180,4 +180,33 @@ export function ShotRow({ shot, coffeeName }: { shot: Shot; coffeeName?: string 
 
 export function RecipeSummary({ recipe }: { recipe: Recipe }) {
   return <span className="recipe-line">{recipeLine(recipe)}</span>;
+}
+
+// ---------------------------------------------------------------- AI results
+
+export function BeanObservationPanel({ obs }: { obs: BeanObservation }) {
+  return (
+    <div className="observation">
+      <div className="obs-head">
+        <strong>Visual observations</strong>
+        <span className="badge src-visual">Estimated · {obs.confidence} confidence</span>
+      </div>
+      <dl className="facts">
+        <div><dt>Roast (estimate)</dt><dd>{obs.roast_estimate_note || (obs.roast_estimate ?? '—')}</dd></div>
+        <div><dt>Colour</dt><dd>{obs.colour_consistency}</dd></div>
+        <div><dt>Surface</dt><dd>{obs.surface}{obs.oiliness ? ` (${obs.oiliness})` : ''}</dd></div>
+        {obs.defects.length ? <div><dt>Defects</dt><dd>{obs.defects.join('; ')}</dd></div> : null}
+        <div><dt>Overall</dt><dd>{obs.general}</dd></div>
+      </dl>
+      <p className="muted small">From the photo only. It can't tell origin, variety or processing.</p>
+    </div>
+  );
+}
+
+export function AiNote({ note }: { note?: string | null }) {
+  return note ? <p className="note small">ℹ {note}</p> : null;
+}
+
+export function isBeanObservation(v: unknown): v is BeanObservation {
+  return !!v && typeof v === 'object' && 'colour_consistency' in v && 'confidence' in v;
 }

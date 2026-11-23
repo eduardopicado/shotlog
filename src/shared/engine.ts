@@ -148,31 +148,36 @@ export interface DialInInput {
   limits?: EquipmentLimits;
 }
 
+/** The parameters the next shot starts from: the recipe, with the grind you ACTUALLY used (spec §8.2). */
+export function nextShotBaseline(shot: ShotFields, target: RecipeParams | null | undefined, prefs: BrewPreferences = DEFAULT_PREFERENCES): RecipeParams {
+  if (target) {
+    return {
+      ...target,
+      temperature_c: target.temperature_c ?? shot.temperature_c ?? ROAST_PROFILES.medium.temperature_c,
+      grind_setting: shot.grind_setting ?? target.grind_setting,
+      grind_inner: shot.grind_inner ?? target.grind_inner,
+    };
+  }
+  return {
+    dose_g: shot.dose_g,
+    yield_g: shot.yield_g,
+    temperature_c: shot.temperature_c ?? ROAST_PROFILES.medium.temperature_c,
+    time_min_s: prefs.time_min_s,
+    time_max_s: prefs.time_max_s,
+    preinfusion_min_s: shot.preinfusion_s ?? prefs.preinfusion_min_s,
+    preinfusion_max_s: shot.preinfusion_s ?? prefs.preinfusion_max_s,
+    grind_setting: shot.grind_setting,
+    grind_inner: shot.grind_inner,
+  };
+}
+
 const VERY = 6; // seconds outside the window that count as "very" fast/slow
 
 export function recommendNextShot({ shot, target, prefs = DEFAULT_PREFERENCES, limits = DEFAULT_LIMITS }: DialInInput): Advice {
   const tags = new Set<TasteTag>(shot.taste_tags ?? []);
   const has = (t: TasteTag) => tags.has(t);
 
-  // Baseline for the next shot = the recipe, with the grind you ACTUALLY used (spec §8.2).
-  const base: RecipeParams = target
-    ? {
-        ...target,
-        temperature_c: target.temperature_c ?? shot.temperature_c ?? ROAST_PROFILES.medium.temperature_c,
-        grind_setting: shot.grind_setting ?? target.grind_setting,
-        grind_inner: shot.grind_inner ?? target.grind_inner,
-      }
-    : {
-        dose_g: shot.dose_g,
-        yield_g: shot.yield_g,
-        temperature_c: shot.temperature_c ?? ROAST_PROFILES.medium.temperature_c,
-        time_min_s: prefs.time_min_s,
-        time_max_s: prefs.time_max_s,
-        preinfusion_min_s: shot.preinfusion_s ?? prefs.preinfusion_min_s,
-        preinfusion_max_s: shot.preinfusion_s ?? prefs.preinfusion_max_s,
-        grind_setting: shot.grind_setting,
-        grind_inner: shot.grind_inner,
-      };
+  const base = nextShotBaseline(shot, target, prefs);
 
   const tMin = base.time_min_s;
   const tMax = base.time_max_s;

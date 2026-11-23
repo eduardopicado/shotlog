@@ -1,7 +1,8 @@
 // Thin typed client for the Worker API. Same origin, so the Cloudflare Access cookie is sent automatically.
 
 import type {
-  Advice, AppStatus, BrewPreferences, Coffee, CoffeeDetail, CoffeeImage, CoffeeSummary, Dashboard, Equipment, Recipe, RecipeParams, Shot,
+  Advice, AppStatus, BeanObservation, BrewPreferences, Coffee, CoffeeDetail, CoffeeImage, CoffeeSummary, Dashboard, Equipment,
+  PackagingDraft, Recipe, RecipeParams, Shot,
 } from '../shared/types';
 import type { RatioCheck } from '../shared/ratio';
 
@@ -55,7 +56,7 @@ export const api = {
   createCoffee: (c: CoffeeInput) => post<Coffee>('/coffees', c),
   updateCoffee: (id: number, c: CoffeeInput) => patch<Coffee>(`/coffees/${id}`, c),
 
-  suggestRecipe: (coffeeId: number, useAi = false) => post<Recipe>(`/coffees/${coffeeId}/recipes/suggest`, { use_ai: useAi }),
+  suggestRecipe: (coffeeId: number, useAi = false) => post<Recipe & { ai_note?: string }>(`/coffees/${coffeeId}/recipes/suggest`, { use_ai: useAi }),
   createRecipe: (coffeeId: number, r: { params: RecipeParams; rationale?: string | null; source?: 'user' | 'packaging'; stated_ratio?: number | null; activate?: boolean }) =>
     post<Recipe & { ratio_check: RatioCheck }>(`/coffees/${coffeeId}/recipes`, r),
   activateRecipe: (id: number) => post<Recipe>(`/recipes/${id}/activate`),
@@ -75,6 +76,9 @@ export const api = {
     return post<CoffeeImage>('/images', form);
   },
   deleteImage: (id: number) => request<void>('DELETE', `/images/${id}`),
+
+  readBag: (imageIds: number[], text?: string) => post<PackagingDraft>('/ai/extract-packaging', { image_ids: imageIds, text: text ?? null }),
+  describeBeans: (imageId: number) => post<{ observation: BeanObservation; image: CoffeeImage }>('/ai/analyze-beans', { image_id: imageId }),
 
   settings: () => get<{ brew_preferences: BrewPreferences }>('/settings'),
   saveSettings: (p: BrewPreferences) => put<{ brew_preferences: BrewPreferences }>('/settings', p),

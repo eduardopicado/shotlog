@@ -249,6 +249,20 @@ export interface Dashboard {
   unassigned_shot_count: number;
 }
 
+/** Result of reading a bag with AI, for the review screen. Only fields that were printed are present. */
+export interface PackagingDraft {
+  fields: Partial<{
+    name: string; brand: string; product: string; origin_country: string; region: string; farm: string; variety: string;
+    processing: string; roast_level: RoastLevel; roast_date: string; altitude: string; intensity: string; cupping_score: number;
+  }>;
+  evidence: Partial<Record<SourcedField, string>>;
+  tasting_notes: string[];
+  packaging_recipe: { dose_g: number | null; yield_g: number | null; stated_ratio: number | null; time_s: number | null; temperature_c: number | null } | null;
+  ratio_check: { consistent: boolean; actualRatio: number; message: string | null; yieldForStated: number | null } | null;
+  raw_text: string;
+  uncertainties: string[];
+}
+
 export interface AppStatus {
   version: string;
   ai_configured: boolean;

@@ -34,21 +34,23 @@ recipes.post('/coffees/:id/recipes/suggest', async (c) => {
   let params = suggestion.params;
   let rationale = suggestion.rationale;
   let source: 'engine' | 'ai' = 'engine';
+  let ai_note: string | undefined;
   if (use_ai) {
     const refined = await refineRecipeWithAi(c.env, { coffee, engine: suggestion, shots, prefs });
     params = refined.params;
     rationale = refined.rationale;
-    source = 'ai';
+    ai_note = refined.note;
+    if (!refined.note) source = 'ai';
   }
 
   // Don't pile up identical suggestions when the button is tapped twice.
   const latest = existing.at(-1);
   if (latest && latest.status === 'suggested' && latest.source === source && changedVariables(recipeParams(latest), params).length === 0
       && latest.time_min_s === params.time_min_s && latest.time_max_s === params.time_max_s) {
-    return c.json(latest);
+    return c.json({ ...latest, ai_note });
   }
   const recipe = await insertRecipe(c.env.DB, coffeeId, { ...params, rationale, source, status: 'suggested' });
-  return c.json(recipe, 201);
+  return c.json({ ...recipe, ai_note }, 201);
 });
 
 /** Manual or packaging recipe. Packaging recipes keep the printed ratio and are checked (rule R2). */
