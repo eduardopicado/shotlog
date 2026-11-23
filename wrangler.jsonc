@@ -1,0 +1,42 @@
+// Cloudflare Worker configuration for Shotlog.
+// Docs: https://developers.cloudflare.com/workers/wrangler/configuration/
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "shotlog",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // The built React app (vite build → dist/). Unknown paths fall back to index.html
+  // so the client-side router can handle them; /api/* always reaches the Worker code.
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+
+  // D1 (SQLite). database_id is optional: on first deploy Wrangler can provision
+  // the database automatically. Migrations live in ./migrations.
+  "d1_databases": [
+    { "binding": "DB", "database_name": "shotlog", "migrations_dir": "migrations" }
+  ],
+
+  // R2 bucket for photos (private; photos are streamed through the Worker).
+  "r2_buckets": [
+    { "binding": "PHOTOS", "bucket_name": "shotlog-photos" }
+  ],
+
+  // Non-secret settings. ANTHROPIC_API_KEY is a secret: `wrangler secret put ANTHROPIC_API_KEY`
+  // or the dashboard (Worker → Settings → Variables and Secrets). Never commit it.
+  "vars": {
+    "MODEL_VISION": "claude-sonnet-5-5",
+    "MODEL_TEXT": "claude-haiku-5-5",
+    "AI_DAILY_CALL_LIMIT": "30",
+    "ACCESS_TEAM_DOMAIN": "",
+    "ACCESS_AUD": "",
+    "AUTH_DISABLED": "false"
+  },
+
+  "observability": { "enabled": true }
+}

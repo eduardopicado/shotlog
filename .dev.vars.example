@@ -1,0 +1,6 @@
+# Copy to .dev.vars for local development (git-ignored). Never commit real keys.
+AUTH_DISABLED=true
+# ANTHROPIC_API_KEY=sk-ant-...
+# Local AI testing against the fake API (scripts/fake-claude.cjs):
+# ANTHROPIC_API_KEY=sk-fake
+# ANTHROPIC_BASE_URL=http://127.0.0.1:8788
