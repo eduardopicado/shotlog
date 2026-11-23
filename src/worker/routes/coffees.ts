@@ -5,6 +5,7 @@ import { createCoffeeSchema, updateCoffeeSchema } from '../schemas';
 import { getCoffee, listRecipes, listShots, nowIso, summarize, summarizeMany, toCoffee, toImage } from '../db';
 import type { CoffeeDetail, FieldSources } from '../../shared/types';
 import { COFFEE_STATUSES, SOURCED_FIELDS } from '../../shared/types';
+import { coffeeStats } from '../../shared/stats';
 
 export const coffees = new Hono<AppEnv>();
 
@@ -71,7 +72,9 @@ coffees.get('/:id', async (c) => {
     listShots(c.env.DB, id),
     c.env.DB.prepare('SELECT * FROM coffee_images WHERE coffee_id = ? ORDER BY created_at').bind(id).all(),
   ]);
-  const detail: CoffeeDetail = { ...summarize(coffee, recipes, shots), recipes, shots, images: imgs.results.map(toImage) };
+  const detail: CoffeeDetail = {
+    ...summarize(coffee, recipes, shots), recipes, shots, images: imgs.results.map(toImage), stats: coffeeStats(coffee, shots, recipes),
+  };
   return c.json(detail);
 });
 

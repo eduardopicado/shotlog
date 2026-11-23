@@ -15,7 +15,7 @@ Personal coffee journal and espresso dial-in assistant for a Breville Dual Boile
 | M2 UI loop — home, coffees, add/edit, recipes, log shot, advice, settings, export | ✅ done, phone smoke test |
 | M3 First deploy to Cloudflare | ⏳ you, guided by docs/CLOUDFLARE.md §4 |
 | M4 AI — read the bag, describe beans, AI recipe + advice review, spend caps | ✅ built and tested against a fake Claude API; first real call happens once you add a key |
-| M5 Polish | ⏳ |
+| M5 Polish — compare coffees, planned vs actual per recipe, dial-in chart, CSV export, roast age per shot, grams left, edit shot numbers, delete photos | ✅ done, phone smoke test |
 
 ## How it's built
 

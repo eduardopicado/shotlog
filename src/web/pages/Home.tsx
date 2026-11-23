@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { ErrorBox, Loading, RecipeSummary, ShotRow, Stars, useLoad } from '../components';
@@ -13,6 +14,11 @@ function CoffeeCard({ s }: { s: CoffeeSummary }) {
         <span className="muted small">{[s.coffee.brand, age].filter(Boolean).join(' · ') || ' '}</span>
       </Link>
       {s.current_recipe ? <RecipeSummary recipe={s.current_recipe} /> : <span className="muted">No recipe yet</span>}
+      {s.coffee.remaining_g != null ? (
+        <span className={`small ${s.coffee.remaining_g < (s.current_recipe?.dose_g ?? 20) * 2 ? 'warn' : 'muted'}`}>
+          {Math.round(s.coffee.remaining_g)} g left (~{Math.floor(s.coffee.remaining_g / (s.current_recipe?.dose_g ?? 20))} shots)
+        </span>
+      ) : null}
       {s.last_shot ? (
         <div className="muted small last-shot">
           Last shot {dateShort(s.last_shot.pulled_at)}: {s.last_shot.time_s} s <Stars value={s.last_shot.score} />
@@ -24,6 +30,26 @@ function CoffeeCard({ s }: { s: CoffeeSummary }) {
   );
 }
 
+/** One-time tip for iPhone/iPad Safari: install to the home screen for a full-screen app. */
+function InstallHint() {
+  const key = 'shotlog.installHintDismissed';
+  const [hidden, setHidden] = useState(() => {
+    try {
+      const standalone = window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone;
+      const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      return !ios || Boolean(standalone) || localStorage.getItem(key) === '1';
+    } catch { return true; }
+  });
+  if (hidden) return null;
+  const dismiss = () => { try { localStorage.setItem(key, '1'); } catch { /* private mode */ } setHidden(true); };
+  return (
+    <div className="card install-hint">
+      <span>Tip: tap <strong>Share</strong> → <strong>Add to Home Screen</strong> to open Shotlog like an app.</span>
+      <button className="btn small ghost" onClick={dismiss} aria-label="Dismiss tip">✕</button>
+    </div>
+  );
+}
+
 export function Home() {
   const { data, error, loading } = useLoad(() => api.dashboard());
   return (
@@ -32,6 +58,7 @@ export function Home() {
         <h1>Shotlog</h1>
         <Link to="/coffees/new" className="btn">＋ Add coffee</Link>
       </header>
+      <InstallHint />
       <ErrorBox error={error} />
       {loading && !data ? <Loading /> : null}
       {data ? (

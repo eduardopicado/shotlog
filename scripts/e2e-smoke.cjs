@@ -81,10 +81,30 @@ const expectText = async (page, text) => { await page.getByText(text, { exact: f
   await expectText(page, '1:2.2');
   await shot(page, '09-new-coffee');
 
-  // 8. Settings: assign the historical shot.
+  // 8. Settings: assign the historical shot to the Guatemala; CSV exports are offered.
   await page.getByRole('link', { name: 'Settings' }).click();
   await expectText(page, 'Shots without a coffee');
+  await expectText(page, 'Shots CSV');
   await shot(page, '10-settings');
+  await page.getByLabel('Assign to coffee').selectOption({ label: 'Lazzio Luxe Reserve Guatemala' });
+  await page.getByText('Shots without a coffee').waitFor({ state: 'detached' });
+
+  // 9. Brazil: dial-in chart, planned vs actual, and correcting a shot's numbers.
+  await page.goto(base + '/coffees/6');
+  await page.locator('figure.chart svg').waitFor();
+  await expectText(page, 'Actual: 1 shot');
+  await shot(page, '11-chart');
+  await page.locator('.shot-row').last().click();
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByLabel('Time', { exact: true }).fill('25');
+  await page.getByRole('button', { name: 'Save & update advice' }).click();
+  await expectText(page, '20 g → 40 g · 1:2 · 25 s');
+
+  // 10. Compare Brazil and Guatemala.
+  await page.goto(base + '/compare?ids=6,7');
+  await expectText(page, 'Most chocolate-forward');
+  await expectText(page, 'Planned vs actual');
+  await shot(page, '12-compare');
 
   await browser.close();
   if (errors.length) { console.error('Console errors:\n' + errors.join('\n')); process.exit(1); }

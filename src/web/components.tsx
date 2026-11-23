@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { BeanObservation, FieldSource, Recipe, Shot, TasteTag } from '../shared/types';
 import { TASTE_TAG_LABELS } from '../shared/types';
-import { checkStatedRatio } from '../shared/ratio';
+import { checkStatedRatio, roastAgeDays } from '../shared/ratio';
 import { ApiError } from './api';
 import { dateShort, formatGrind, formatRatio, g, range, recipeLine, s, SOURCE_LABELS, temp } from './format';
 
@@ -161,7 +161,8 @@ export function RecipeCard({ recipe, title = 'Current recipe', children }: { rec
   );
 }
 
-export function ShotRow({ shot, coffeeName }: { shot: Shot; coffeeName?: string | null }) {
+export function ShotRow({ shot, coffeeName, roastDate }: { shot: Shot; coffeeName?: string | null; roastDate?: string | null }) {
+  const age = roastAgeDays(roastDate, shot.pulled_at);
   return (
     <Link to={`/shots/${shot.id}`} className="shot-row">
       <div className="shot-main">
@@ -170,6 +171,7 @@ export function ShotRow({ shot, coffeeName }: { shot: Shot; coffeeName?: string 
           {coffeeName ? `${coffeeName} · ` : ''}{dateShort(shot.pulled_at)}
           {shot.temperature_c != null ? ` · ${temp(shot.temperature_c)}` : ''}
           {shot.grind_setting != null ? ` · grind ${formatGrind(shot.grind_setting, shot.grind_inner)}` : ''}
+          {age != null && age >= 0 ? ` · day ${age} off roast` : ''}
         </span>
         <TagList tags={shot.taste_tags} />
       </div>

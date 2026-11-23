@@ -84,8 +84,12 @@ export function Settings() {
 
       <section className="card">
         <h2>Your data</h2>
-        <p className="muted small">Download everything (coffees, recipes, shots, settings) as JSON.</p>
-        <a className="btn" href="/api/export" download>Export JSON</a>
+        <p className="muted small">Download everything as JSON (complete backup), or shots and coffees as CSV for a spreadsheet.</p>
+        <div className="row">
+          <a className="btn" href="/api/export" download>Export JSON</a>
+          <a className="btn" href="/api/export/shots.csv" download>Shots CSV</a>
+          <a className="btn" href="/api/export/coffees.csv" download>Coffees CSV</a>
+        </div>
         {status.data ? <p className="muted small">Shotlog v{status.data.version}</p> : null}
       </section>
     </Page>

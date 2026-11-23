@@ -71,7 +71,10 @@ shots.post('/', async (c) => {
   // Using a suggested recipe makes it the active one; a good "keep" marks it promising.
   const writes: D1PreparedStatement[] = [];
   if (recipe && advice.promising) writes.push(db.prepare('UPDATE recipes SET promising = 1 WHERE id = ?').bind(recipe.id));
-  writes.push(db.prepare(`UPDATE coffees SET updated_at = ?${input.mark_active ? ", status = 'active'" : ''} WHERE id = ?`).bind(nowIso(), coffee.id));
+  // Bean inventory: if you track grams left, each shot uses its dose (never below zero).
+  writes.push(db.prepare(
+    `UPDATE coffees SET updated_at = ?, remaining_g = CASE WHEN remaining_g IS NULL THEN NULL ELSE MAX(0, remaining_g - ?) END${input.mark_active ? ", status = 'active'" : ''} WHERE id = ?`,
+  ).bind(nowIso(), input.dose_g, coffee.id));
   await db.batch(writes);
   if (recipe && recipe.status === 'suggested' && recipe.temperature_c != null) await activateRecipe(db, recipe);
 

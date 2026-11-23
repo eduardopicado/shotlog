@@ -6,6 +6,7 @@ import { dateShort, formatGrind, formatRatio, g, roastAge, ROAST_LABELS, STATUS_
 import { changedVariables } from '../../shared/engine';
 import type { CoffeeDetail, CoffeeStatus, ImageType, Recipe, SourcedField } from '../../shared/types';
 import { resizeImage } from '../image';
+import { DialInChart } from '../chart';
 
 const FACTS: Array<[SourcedField, string]> = [
   ['brand', 'Brand / roaster'], ['product', 'Product'], ['origin_country', 'Origin'], ['region', 'Region'], ['farm', 'Farm / producer'],
@@ -80,6 +81,11 @@ export function CoffeeDetailPage() {
         <span className={`pill st-${c.status}`}>{STATUS_LABELS[c.status]}</span>
         {age ? <span className="muted small">{age}</span> : null}
         <span className="muted small">{data.shot_count} shot{data.shot_count === 1 ? '' : 's'}{data.avg_score != null ? ` · avg ${data.avg_score}/5` : ''}</span>
+        {c.remaining_g != null ? (
+          <span className={`small ${c.remaining_g < (recipe?.dose_g ?? 20) * 2 ? 'warn' : 'muted'}`}>
+            {trimNumber(c.remaining_g)} g left (~{Math.floor(c.remaining_g / (recipe?.dose_g ?? 20))} shots)
+          </span>
+        ) : null}
       </div>
 
       <div className="row">
@@ -112,7 +118,7 @@ export function CoffeeDetailPage() {
       {data.best_shot ? (
         <section className="card">
           <h2>Best shot so far</h2>
-          <ShotRow shot={data.best_shot} />
+          <ShotRow shot={data.best_shot} roastDate={c.roast_date} />
         </section>
       ) : null}
 
@@ -142,6 +148,8 @@ export function CoffeeDetailPage() {
                 <figcaption>{img.image_type}</figcaption>
                 {aiOn && img.image_type === 'beans' && !isBeanObservation(img.ai_observations)
                   ? <button className="btn small" disabled={busy} onClick={() => describe(img.id)}>✨ Describe</button> : null}
+                <button className="photo-del" aria-label={`Delete ${img.image_type} photo`} disabled={busy}
+                  onClick={() => { if (window.confirm('Delete this photo?')) void act(() => api.deleteImage(img.id)); }}>×</button>
               </figure>
             ))}
           </div>
@@ -157,7 +165,8 @@ export function CoffeeDetailPage() {
 
       <section className="card">
         <h2>Shot history</h2>
-        {data.shots.length ? data.shots.map((s) => <ShotRow key={s.id} shot={s} />) : <p className="muted small">No shots logged yet.</p>}
+        <DialInChart shots={data.shots} recipes={data.recipes} />
+        {data.shots.length ? data.shots.map((s) => <ShotRow key={s.id} shot={s} roastDate={c.roast_date} />) : <p className="muted small">No shots logged yet.</p>}
       </section>
 
       {data.recipes.length ? (
@@ -166,11 +175,20 @@ export function CoffeeDetailPage() {
           <ol className="timeline">
             {[...data.recipes].reverse().map((r) => {
               const prev = data.recipes.find((x) => x.version === r.version - 1);
+              const st = data.stats.recipes.find((x) => x.recipe_id === r.id);
               return (
                 <li key={r.id} className={`tl-${r.status}`}>
                   <div><strong>v{r.version}</strong> <span className="muted small">{dateShort(r.created_at)} · {r.source} · {r.status}{r.promising ? ' · ★' : ''}</span></div>
                   <div className="small">{g(r.dose_g)} → {g(r.yield_g)} · {formatRatio(r.dose_g, r.yield_g)} · {temp(r.temperature_c)} · grind {formatGrind(r.grind_setting, r.grind_inner)}</div>
                   <div className="muted small">Changed: {whatChanged(prev, r)}</div>
+                  {st && st.shots ? (
+                    <div className="small actual">
+                      Actual: {st.shots} shot{st.shots === 1 ? '' : 's'}, avg {trimNumber(st.avg_time!)} s
+                      {st.on_target != null ? ` (${Math.round(st.on_target * 100)}% in window)` : ''}
+                      {st.avg_score != null ? ` · ${st.avg_score}/5` : ''}
+                      {data.stats.most_successful_recipe?.recipe_id === r.id && data.stats.recipes.filter((x) => x.avg_score != null).length > 1 ? ' · 🏆 best so far' : ''}
+                    </div>
+                  ) : null}
                 </li>
               );
             })}

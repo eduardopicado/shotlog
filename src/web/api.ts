@@ -5,6 +5,7 @@ import type {
   PackagingDraft, Recipe, RecipeParams, Shot,
 } from '../shared/types';
 import type { RatioCheck } from '../shared/ratio';
+import type { CoffeeStats, compareHighlights } from '../shared/stats';
 
 export class ApiError extends Error {
   constructor(public status: number, message: string, public details?: Array<{ path: string; message: string }>) {
@@ -83,4 +84,5 @@ export const api = {
   settings: () => get<{ brew_preferences: BrewPreferences }>('/settings'),
   saveSettings: (p: BrewPreferences) => put<{ brew_preferences: BrewPreferences }>('/settings', p),
   equipment: () => get<Equipment[]>('/equipment'),
+  compare: (ids: number[]) => get<{ items: Array<CoffeeSummary & { stats: CoffeeStats }>; highlights: ReturnType<typeof compareHighlights> }>(`/compare?ids=${ids.join(',')}`),
 };

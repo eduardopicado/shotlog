@@ -9,7 +9,7 @@ export function Coffees() {
   const status = (params.get('status') ?? '') as CoffeeStatus | '';
   const { data, error, loading } = useLoad(() => api.coffees(status || undefined), [status]);
   return (
-    <Page title="Coffees" actions={<Link to="/coffees/new" className="btn">＋ Add</Link>}>
+    <Page title="Coffees" actions={<><Link to="/compare" className="btn">Compare</Link><Link to="/coffees/new" className="btn">＋ Add</Link></>}>
       <div className="chips filter">
         <button type="button" className={`chip${!status ? ' on' : ''}`} onClick={() => setParams({})}>All</button>
         {COFFEE_STATUSES.map((st) => (

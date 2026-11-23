@@ -239,6 +239,7 @@ export interface CoffeeDetail extends CoffeeSummary {
   images: CoffeeImage[];
   recipes: Recipe[];
   shots: Shot[];
+  stats: import('./stats').CoffeeStats;
 }
 
 export interface Dashboard {

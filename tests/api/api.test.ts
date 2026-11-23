@@ -277,3 +277,53 @@ describe('settings, status, export, auth', () => {
     expect((await res.json() as any).coffee.name).toBe('Persisted');
   });
 });
+
+describe('M5: compare, stats, CSV, inventory', () => {
+  it('compares coffees and finds the most chocolate-forward one', async () => {
+    const a = (await post('/coffees', { name: 'Choc Brazil', roast_level: 'medium' })).data;
+    const b = (await post('/coffees', { name: 'Fruity Kenya', roast_level: 'light' })).data;
+    await post('/shots', { coffee_id: a.id, dose_g: 20, yield_g: 40, time_s: 29, taste_tags: ['sweet', 'chocolate'], score: 4 });
+    await post('/shots', { coffee_id: a.id, dose_g: 20, yield_g: 40, time_s: 30, taste_tags: ['chocolate', 'caramel'], score: 5 });
+    await post('/shots', { coffee_id: b.id, dose_g: 20, yield_g: 44, time_s: 30, taste_tags: ['fruity', 'sweet'], score: 4 });
+    const r = await get(`/compare?ids=${a.id},${b.id}`);
+    expect(r.status).toBe(200);
+    expect(r.data.items.map((i: any) => i.coffee.name)).toEqual(['Choc Brazil', 'Fruity Kenya']);
+    expect(r.data.items[0].stats).toMatchObject({ shots: 2, avg_score: 4.5, flavour_share: { chocolate: 1 } });
+    expect(r.data.highlights.chocolate).toMatchObject({ coffee_id: a.id, value: 1 });
+    expect(r.data.highlights.fruity).toMatchObject({ coffee_id: b.id });
+    expect(r.data.highlights.best_avg_score.coffee_id).toBe(a.id);
+    expect((await get('/compare')).status).toBe(400);
+  });
+
+  it('coffee detail includes planned vs actual per recipe', async () => {
+    const c = (await post('/coffees', { name: 'Stats', roast_level: 'medium' })).data;
+    await post(`/coffees/${c.id}/recipes/suggest`, {});
+    await post('/shots', { coffee_id: c.id, dose_g: 20, yield_g: 40, time_s: 24, taste_tags: ['sour'], score: 2 });
+    await post('/shots', { coffee_id: c.id, dose_g: 20, yield_g: 41, time_s: 30, taste_tags: ['sweet'], score: 4 });
+    const d = (await get(`/coffees/${c.id}`)).data;
+    expect(d.stats.recipes[0]).toMatchObject({ version: 1, shots: 2, avg_score: 3, avg_time: 27, on_target: 0.5 });
+    expect(d.stats.most_successful_recipe.version).toBe(1);
+  });
+
+  it('deducts the dose from grams left when tracked', async () => {
+    const c = (await post('/coffees', { name: 'Inventory', remaining_g: 250 })).data;
+    await post('/shots', { coffee_id: c.id, dose_g: 20.5, yield_g: 40, time_s: 30 });
+    expect((await get(`/coffees/${c.id}`)).data.coffee.remaining_g).toBe(229.5);
+    const untracked = (await post('/coffees', { name: 'Untracked' })).data;
+    await post('/shots', { coffee_id: untracked.id, dose_g: 20, yield_g: 40, time_s: 30 });
+    expect((await get(`/coffees/${untracked.id}`)).data.coffee.remaining_g).toBeNull();
+  });
+
+  it('exports shots and coffees as CSV', async () => {
+    const { exports } = await import('cloudflare:workers');
+    const res = await (exports as any).default.fetch(new Request('https://shotlog.test/api/export/shots.csv'));
+    expect(res.headers.get('Content-Type')).toMatch(/text\/csv/);
+    const text = await res.text();
+    const [header, ...rows] = text.trim().split('\r\n');
+    expect(header.split(',').slice(0, 7)).toEqual(['shot_id', 'pulled_at', 'coffee', 'recipe_version', 'dose_g', 'yield_g', 'ratio']);
+    expect(rows.some((r: string) => r.includes('19.7,39.5,1:2.01'))).toBe(true);
+    const coffees = await (await (exports as any).default.fetch(new Request('https://shotlog.test/api/export/coffees.csv'))).text();
+    expect(coffees).toContain('Lazzio Brazil Single Origin');
+    expect(coffees).toMatch(/Minas Gerais,packaging/);
+  });
+});

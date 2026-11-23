@@ -2,7 +2,11 @@ import { Hono } from 'hono';
 import type { AppEnv } from '../app';
 import { body, idParam, notFound } from '../http';
 import { equipmentUpdateSchema, preferencesSchema } from '../schemas';
-import { getPreferences, summarizeMany, toCoffee, toEquipment, toShot } from '../db';
+import { getPreferences, summarizeMany, toCoffee, toEquipment, toRecipe, toShot } from '../db';
+import { coffeeStats, compareHighlights } from '../../shared/stats';
+import { toCsv } from '../../shared/csv';
+import { formatRatio, roastAgeDays } from '../../shared/ratio';
+import { HTTPException } from 'hono/http-exception';
 import { aiConfigured } from '../ai/service';
 import type { AppStatus, Dashboard } from '../../shared/types';
 
@@ -83,4 +87,57 @@ system.get('/export', async (c) => {
   const results = await db.batch(tables.map((t) => db.prepare(`SELECT * FROM ${t} ORDER BY 1`)));
   tables.forEach((t, i) => { out[t] = results[i].results; });
   return c.json(out, 200, { 'Content-Disposition': `attachment; filename="shotlog-export-${new Date().toISOString().slice(0, 10)}.json"` });
+});
+
+/** Side-by-side comparison of 2+ coffees (spec §4.F). */
+system.get('/compare', async (c) => {
+  const ids = Array.from(new Set((c.req.query('ids') ?? '').split(',').map(Number).filter((n) => Number.isInteger(n) && n > 0))).slice(0, 6);
+  if (!ids.length) throw new HTTPException(400, { message: 'Pick at least one coffee (ids=1,2)' });
+  const db = c.env.DB;
+  const ph = ids.map(() => '?').join(',');
+  const [coffees, recipes, shots] = await Promise.all([
+    db.prepare(`SELECT * FROM coffees WHERE id IN (${ph})`).bind(...ids).all(),
+    db.prepare(`SELECT * FROM recipes WHERE coffee_id IN (${ph}) ORDER BY version`).bind(...ids).all(),
+    db.prepare(`SELECT * FROM shots WHERE coffee_id IN (${ph}) ORDER BY pulled_at DESC, id DESC`).bind(...ids).all(),
+  ]);
+  const allRecipes = recipes.results.map(toRecipe);
+  const allShots = shots.results.map(toShot);
+  const summaries = await summarizeMany(db, coffees.results.map(toCoffee));
+  const items = ids.map((id) => summaries.find((s) => s.coffee.id === id)).filter((s) => s != null).map((summary) => ({
+    ...summary,
+    stats: coffeeStats(summary.coffee, allShots.filter((s) => s.coffee_id === summary.coffee.id), allRecipes.filter((r) => r.coffee_id === summary.coffee.id)),
+  }));
+  return c.json({ items, highlights: compareHighlights(items.map((i) => ({ coffee_id: i.coffee.id, stats: i.stats }))) });
+});
+
+/** CSV exports for spreadsheets: every shot (with its coffee), or every coffee. */
+system.get('/export/shots.csv', async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT s.*, c.name AS coffee_name, c.roast_date AS roast_date, r.version AS recipe_version
+     FROM shots s LEFT JOIN coffees c ON c.id = s.coffee_id LEFT JOIN recipes r ON r.id = s.recipe_id
+     ORDER BY s.pulled_at, s.id`,
+  ).all();
+  const csv = toCsv(
+    ['shot_id', 'pulled_at', 'coffee', 'recipe_version', 'dose_g', 'yield_g', 'ratio', 'time_s', 'temperature_c', 'preinfusion_s', 'grind', 'inner_burr', 'roast_age_days', 'taste', 'score', 'feedback', 'notes', 'next_advice'],
+    results.map((row) => {
+      const s = toShot(row);
+      return [s.id, s.pulled_at, row.coffee_name, row.recipe_version, s.dose_g, s.yield_g, formatRatio(s.dose_g, s.yield_g), s.time_s, s.temperature_c,
+        s.preinfusion_s, s.grind_setting, s.grind_inner, roastAgeDays(row.roast_date as string | null, s.pulled_at), s.taste_tags, s.score, s.feedback, s.notes,
+        s.advice?.headline ?? null];
+    }),
+  );
+  return c.body(csv, 200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="shotlog-shots-${new Date().toISOString().slice(0, 10)}.csv"` });
+});
+
+system.get('/export/coffees.csv', async (c) => {
+  const { results } = await c.env.DB.prepare('SELECT * FROM coffees ORDER BY id').all();
+  const fields = ['name', 'brand', 'product', 'origin_country', 'region', 'farm', 'variety', 'processing', 'roast_level', 'roast_date', 'altitude', 'intensity', 'cupping_score', 'tasting_notes'] as const;
+  const csv = toCsv(
+    ['coffee_id', 'status', ...fields.flatMap((f) => [f, `${f}_source`]), 'purchase_date', 'remaining_g', 'notes'],
+    results.map((row) => {
+      const cf = toCoffee(row);
+      return [cf.id, cf.status, ...fields.flatMap((f) => [cf[f], cf[f] == null || (Array.isArray(cf[f]) && !(cf[f] as unknown[]).length) ? null : cf.field_sources[f] ?? null]), cf.purchase_date, cf.remaining_g, cf.notes];
+    }),
+  );
+  return c.body(csv, 200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="shotlog-coffees-${new Date().toISOString().slice(0, 10)}.csv"` });
 });

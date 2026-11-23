@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
-import { AiNote, Chips, ErrorBox, Loading, Page, Stars, TagList, useLoad } from '../components';
+import { AiNote, Chips, ErrorBox, Loading, Page, Stars, Stepper, TagList, useLoad } from '../components';
 import { dateTime, formatGrind, formatRatio, g, range, s, temp } from '../format';
 import { changedVariables } from '../../shared/engine';
 import { BALANCE_TAGS, FLAVOUR_TAGS, type Advice, type RecipeParams, type TasteTag } from '../../shared/types';
@@ -63,6 +63,9 @@ export function ShotPage() {
   }, [isNew, aiOn, data]); // eslint-disable-line react-hooks/exhaustive-deps
   const [tags, setTags] = useState<TasteTag[]>([]);
   const [score, setScore] = useState<number | null>(null);
+  const [nums, setNums] = useState<{ dose_g: number | null; yield_g: number | null; time_s: number | null; temperature_c: number | null; grind_setting: number | null }>(
+    { dose_g: null, yield_g: null, time_s: null, temperature_c: null, grind_setting: null });
+  const setNum = (k: keyof typeof nums) => (v: number | null) => setNums((n) => ({ ...n, [k]: v }));
 
   if (loading && !data) return <Page title="Shot" back="/"><Loading /></Page>;
   if (!data) return <Page title="Shot" back="/"><ErrorBox error={error} /></Page>;
@@ -79,7 +82,13 @@ export function ShotPage() {
   const saveTasting = async () => {
     setBusy(true);
     setActionError(null);
-    try { await api.updateShot(shot.id, { taste_tags: tags, score }); setEditing(false); await reload(); } catch (e) { setActionError(e); } finally { setBusy(false); }
+    if (nums.dose_g == null || nums.yield_g == null || nums.time_s == null) return;
+    try {
+      // Corrects this shot only; recipes are never touched (rule R3). The advice is recomputed.
+      await api.updateShot(shot.id, { taste_tags: tags, score, dose_g: nums.dose_g, yield_g: nums.yield_g, time_s: nums.time_s, temperature_c: nums.temperature_c, grind_setting: nums.grind_setting });
+      setEditing(false);
+      await reload();
+    } catch (e) { setActionError(e); } finally { setBusy(false); }
   };
 
   return (
@@ -97,6 +106,13 @@ export function ShotPage() {
         </div>
         {editing ? (
           <>
+            <div className="grid2">
+              <Stepper label="Dose" unit="g" value={nums.dose_g} onChange={setNum('dose_g')} step={0.1} max={30} />
+              <Stepper label="Yield" unit="g" value={nums.yield_g} onChange={setNum('yield_g')} step={0.5} max={100} />
+              <Stepper label="Time" unit="s" value={nums.time_s} onChange={setNum('time_s')} step={1} max={120} decimals={0} />
+              <Stepper label="Temp" unit="°C" value={nums.temperature_c} onChange={setNum('temperature_c')} step={1} min={86} max={96} decimals={0} allowEmpty />
+              <Stepper label="Grind" unit="dial" value={nums.grind_setting} onChange={setNum('grind_setting')} step={1} min={1} max={60} allowEmpty />
+            </div>
             <Chips options={BALANCE_TAGS} value={tags} onChange={setTags} />
             <Chips options={FLAVOUR_TAGS} value={tags} onChange={setTags} />
             <div className="score-row"><span>Score</span><Stars value={score} onChange={setScore} /></div>
@@ -108,7 +124,11 @@ export function ShotPage() {
         ) : (
           <div className="row between">
             <span><TagList tags={shot.taste_tags} /> <Stars value={shot.score} /></span>
-            <button className="btn small" onClick={() => { setTags(shot.taste_tags); setScore(shot.score); setEditing(true); }}>Edit tasting</button>
+            <button className="btn small" onClick={() => {
+              setTags(shot.taste_tags); setScore(shot.score);
+              setNums({ dose_g: shot.dose_g, yield_g: shot.yield_g, time_s: shot.time_s, temperature_c: shot.temperature_c, grind_setting: shot.grind_setting });
+              setEditing(true);
+            }}>Edit</button>
           </div>
         )}
         {shot.feedback ? <p className="quote">“{shot.feedback}”</p> : null}
